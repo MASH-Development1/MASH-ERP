@@ -49,8 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(data);
           lastFetchedUserId = userId;
         }
-      } catch (error) {
-        console.error('Error fetching profile:', error);
+      } catch (error: any) {
+        console.error('Error fetching profile details:', JSON.stringify(error, null, 2));
+        console.error('Raw profile error:', error);
+        
+        if (error.code === 'PGRST116') {
+          console.warn('Profile not found for user:', userId);
+          setProfile(null);
+        }
       }
     };
 

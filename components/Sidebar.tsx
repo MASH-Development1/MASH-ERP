@@ -14,6 +14,7 @@ import {
   Megaphone,
   BarChart3,
   LineChart,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -68,6 +69,11 @@ const NAV_ITEMS: NavItem[] = [
     href: '/protected/campaigns',
     label: 'Campaigns',
     icon: <Megaphone className="w-5 h-5" />,
+  },
+  {
+    href: '/protected/canvas',
+    label: 'Canvas',
+    icon: <FileText className="w-5 h-5" />,
   },
   {
     href: '/protected/forecast',

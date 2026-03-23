@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -33,6 +33,13 @@ interface AddTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   projects: Project[];
   onTaskAdded: () => void;
+  type?: 'task' | 'goal';
+}
+
+interface Profile {
+  id: string;
+  first_name: string;
+  last_name: string;
 }
 
 export function AddTaskDialog({
@@ -40,33 +47,51 @@ export function AddTaskDialog({
   onOpenChange,
   projects,
   onTaskAdded,
+  type = 'task',
 }: AddTaskDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const { user } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     priority: 'medium',
     projectId: projects[0]?.id || 'none',
+    assignedTo: '',
     dueDate: '',
   });
   const supabase = createClient();
+
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
+
+  const fetchProfiles = async () => {
+    // No longer needed as we use free-text names
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
+    const tableName = type === 'goal' ? 'goals' : 'tasks';
     try {
-      const { error } = await supabase.from('tasks').insert({
+      const insertData: any = {
         title: formData.title,
         description: formData.description,
         priority: formData.priority,
         project_id: formData.projectId === 'none' ? null : formData.projectId,
-        assigned_to: user?.id,
+        assigned_to: formData.assignedTo || null,
         assigned_by: user?.id,
         due_date: formData.dueDate || null,
         status: 'todo',
-      });
+      };
+
+      if (type === 'goal') {
+        insertData.created_by = user?.id;
+      }
+
+      const { error } = await supabase.from(tableName).insert(insertData);
 
       if (error) throw error;
 
@@ -76,11 +101,17 @@ export function AddTaskDialog({
         description: '',
         priority: 'medium',
         projectId: projects[0]?.id || 'none',
+        assignedTo: '',
         dueDate: '',
       });
-    } catch (error) {
-      console.error('Error adding task:', error);
-      alert('Failed to add task. Please try again.');
+    } catch (error: any) {
+      console.error(`Detailed error adding ${type}:`, JSON.stringify(error, null, 2));
+      console.error(`Error object for ${type}:`, error);
+      const errorMessage = error.message || 'Unknown error';
+      const errorDetail = error.details || '';
+      const errorHint = error.hint || '';
+      
+      alert(`Failed to add ${type}.\n\nError: ${errorMessage}\n${errorDetail}\n${errorHint}`);
     } finally {
       setLoading(false);
     }
@@ -90,14 +121,14 @@ export function AddTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Create New Task</DialogTitle>
+          <DialogTitle>Create New {type === 'goal' ? 'Goal' : 'Task'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Task Title</Label>
+            <Label htmlFor="title">{type === 'goal' ? 'Goal' : 'Task'} Title</Label>
             <Input
               id="title"
-              placeholder="Enter task title"
+              placeholder={`Enter ${type} title`}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               required
@@ -127,7 +158,7 @@ export function AddTaskDialog({
                 }
               >
                 <SelectTrigger id="project">
-                  <SelectValue />
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No Project</SelectItem>
@@ -160,14 +191,28 @@ export function AddTaskDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dueDate">Due Date</Label>
-            <Input
-              id="dueDate"
-              type="date"
-              value={formData.dueDate}
-              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="assignee">Assignee Name</Label>
+              <Input
+                id="assignee"
+                placeholder="Enter assignee name"
+                value={formData.assignedTo}
+                onChange={(e) =>
+                  setFormData({ ...formData, assignedTo: e.target.value })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="dueDate">Due Date</Label>
+              <Input
+                id="dueDate"
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+              />
+            </div>
           </div>
 
           <DialogFooter>
