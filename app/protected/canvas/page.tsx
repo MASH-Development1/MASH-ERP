@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, FileText, Search, Trash2, Save, MoreVertical } from 'lucide-react';
+import { Plus, FileText, Search, Trash2, Save, MoreVertical, Download } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,6 +102,68 @@ export default function CanvasPage() {
     doc.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const exportAsWord = () => {
+    if (!selectedDoc) return;
+    const { title, content } = selectedDoc;
+    const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>${title}</title></head>
+      <body>
+        <h1>${title}</h1>
+        <p>${(content || '').replace(/\n/g, '<br>')}</p>
+      </body>
+    </html>`;
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAsPDF = async () => {
+    if (!selectedDoc) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+      
+      const margin = 20;
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const textWidth = pageWidth - margin * 2;
+      
+      let cursorY = margin;
+      
+      // Title
+      doc.setFontSize(22);
+      doc.setFont('helvetica', 'bold');
+      const titleLines = doc.splitTextToSize(selectedDoc.title, textWidth);
+      doc.text(titleLines, margin, cursorY);
+      cursorY += titleLines.length * 10 + 5;
+      
+      // Content
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      const contentLines = doc.splitTextToSize(selectedDoc.content || '', textWidth);
+      
+      for (let i = 0; i < contentLines.length; i++) {
+        if (cursorY > pageHeight - margin) {
+          doc.addPage();
+          cursorY = margin;
+        }
+        doc.text(contentLines[i], margin, cursorY);
+        cursorY += 6; // Standard line-height approximation
+      }
+      
+      doc.save(`${selectedDoc.title}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please make sure the app is fully loaded.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -193,6 +255,19 @@ export default function CanvasPage() {
                 placeholder="Document Title"
               />
               <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Download className="w-4 h-4 mr-2" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={exportAsPDF}>Export as PDF</DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportAsWord}>Export as Word</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                
                 <Button 
                   variant="outline" 
                   size="sm" 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -44,13 +44,27 @@ export function AddExpenseDialog({
 }: AddExpenseDialogProps) {
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [formData, setFormData] = useState({
+    project_id: 'none',
     amount: '',
     category: 'other',
     description: '',
     expenseDate: new Date().toISOString().split('T')[0],
+    status: 'pending',
   });
   const supabase = createClient();
+
+  useEffect(() => {
+    if (open) {
+      fetchProjects();
+    }
+  }, [open]);
+
+  const fetchProjects = async () => {
+    const { data } = await supabase.from('projects').select('id, name');
+    if (data) setProjects(data);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,22 +72,25 @@ export function AddExpenseDialog({
 
     try {
       const { error } = await supabase.from('expenses').insert({
+        project_id: (formData.project_id === 'none' || !formData.project_id) ? null : formData.project_id,
         amount: parseFloat(formData.amount),
         category: formData.category,
         description: formData.description,
         expense_date: formData.expenseDate,
         submitted_by: user?.id,
-        status: 'pending',
+        status: formData.status,
       });
 
       if (error) throw error;
 
       onExpenseAdded();
       setFormData({
+        project_id: 'none',
         amount: '',
         category: 'other',
         description: '',
         expenseDate: new Date().toISOString().split('T')[0],
+        status: 'pending',
       });
     } catch (error) {
       console.error('Error adding expense:', error);
@@ -90,6 +107,26 @@ export function AddExpenseDialog({
           <DialogTitle>Submit Expense Claim</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Project (Optional)</Label>
+            <Select
+              value={formData.project_id}
+              onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="amount">Amount ($)</Label>
             <Input
@@ -124,15 +161,33 @@ export function AddExpenseDialog({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="expenseDate">Date</Label>
-            <Input
-              id="expenseDate"
-              type="date"
-              value={formData.expenseDate}
-              onChange={(e) => setFormData({ ...formData, expenseDate: e.target.value })}
-              required
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="expenseDate">Date</Label>
+              <Input
+                id="expenseDate"
+                type="date"
+                value={formData.expenseDate}
+                onChange={(e) => setFormData({ ...formData, expenseDate: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Initial Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData({ ...formData, status: value })}
+              >
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">

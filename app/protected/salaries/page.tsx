@@ -28,6 +28,7 @@ interface Salary {
   net_salary: number;
   salary_month: string;
   status: 'pending' | 'approved' | 'paid' | 'rejected';
+  freelancer_name?: string;
   created_at: string;
 }
 
@@ -169,7 +170,9 @@ export default function SalariesPage() {
                 {salaries.map((salary) => (
                   <TableRow key={salary.id}>
                     <TableCell className="font-medium">
-                      {employees.get(salary.employee_id) || 'Unknown'}
+                      {salary.freelancer_name 
+                        ? `${salary.freelancer_name} (Freelance)` 
+                        : (employees.get(salary.employee_id) || 'Unknown')}
                     </TableCell>
                     <TableCell>
                       ${parseFloat(salary.base_salary as any).toLocaleString()}

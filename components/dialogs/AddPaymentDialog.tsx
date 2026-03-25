@@ -35,7 +35,8 @@ export function AddPaymentDialog({ open, onOpenChange, onPaymentAdded }: AddPaym
     status: 'pending',
     due_date: '',
     payment_date: '',
-    notes: '',
+    description: '',
+    payment_method: 'bank_transfer',
   });
 
   const supabase = createClient();
@@ -57,12 +58,13 @@ export function AddPaymentDialog({ open, onOpenChange, onPaymentAdded }: AddPaym
 
     try {
       const { error } = await supabase.from('payments').insert([{
-        project_id: formData.project_id || null, // Optional if no project
+        project_id: (formData.project_id === 'none' || !formData.project_id) ? null : formData.project_id,
         amount: parseFloat(formData.amount),
         status: formData.status,
         due_date: formData.due_date || null,
         payment_date: formData.payment_date || null,
-        notes: formData.notes,
+        description: formData.description,
+        payment_method: formData.payment_method,
       }]);
 
       if (error) throw error;
@@ -73,12 +75,13 @@ export function AddPaymentDialog({ open, onOpenChange, onPaymentAdded }: AddPaym
         status: 'pending',
         due_date: '',
         payment_date: '',
-        notes: '',
+        description: '',
+        payment_method: 'bank_transfer',
       });
       onPaymentAdded();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding income record:', error);
-      alert('Failed to record income');
+      alert(`Failed to record income: ${error?.message || error?.details || JSON.stringify(error) || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -142,6 +145,25 @@ export function AddPaymentDialog({ open, onOpenChange, onPaymentAdded }: AddPaym
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>Payment Method</Label>
+            <Select
+              value={formData.payment_method}
+              onValueChange={(value) => setFormData({ ...formData, payment_method: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="credit_card">Credit Card</SelectItem>
+                <SelectItem value="check">Check</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="due_date">Due Date</Label>
@@ -164,11 +186,11 @@ export function AddPaymentDialog({ open, onOpenChange, onPaymentAdded }: AddPaym
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="description">Notes / Description</Label>
             <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
           </div>
 

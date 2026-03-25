@@ -28,13 +28,15 @@ interface AddSalaryDialogProps {
 export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalaryDialogProps) {
   const [loading, setLoading] = useState(false);
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [formData, setFormData] = useState({
     employee_id: '',
+    freelancer_name: '',
+    project_id: 'none',
     base_salary: '',
     bonus: '0',
     deductions: '0',
     salary_month: '',
-    payment_date: '',
     status: 'pending',
   });
 
@@ -47,8 +49,12 @@ export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalary
   }, [open]);
 
   const fetchEmployees = async () => {
-    const { data } = await supabase.from('users').select('id, full_name');
-    if (data) setEmployees(data);
+    const [empRes, projRes] = await Promise.all([
+      supabase.from('users').select('id, full_name'),
+      supabase.from('projects').select('id, name')
+    ]);
+    if (empRes.data) setEmployees(empRes.data);
+    if (projRes.data) setProjects(projRes.data);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,13 +68,14 @@ export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalary
       const net_salary = base + bonus - deductions;
 
       const { error } = await supabase.from('salaries').insert([{
-        employee_id: formData.employee_id,
+        employee_id: (formData.employee_id === 'freelancer' || !formData.employee_id) ? null : formData.employee_id,
+        freelancer_name: formData.employee_id === 'freelancer' ? formData.freelancer_name : null,
+        project_id: (formData.project_id === 'none' || !formData.project_id) ? null : formData.project_id,
         base_salary: base,
         bonus,
         deductions,
         net_salary,
         salary_month: formData.salary_month,
-        payment_date: formData.payment_date || null,
         status: formData.status,
       }]);
 
@@ -76,17 +83,18 @@ export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalary
       
       setFormData({
         employee_id: '',
+        freelancer_name: '',
+        project_id: 'none',
         base_salary: '',
         bonus: '0',
         deductions: '0',
         salary_month: '',
-        payment_date: '',
         status: 'pending',
       });
       onSalaryAdded();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding salary:', error);
-      alert('Failed to add salary');
+      alert(`Failed to add salary: ${error?.message || error?.details || JSON.stringify(error) || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -110,9 +118,45 @@ export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalary
                 <SelectValue placeholder="Select employee" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="freelancer" className="font-semibold text-primary">
+                  + Custom Freelancer
+                </SelectItem>
                 {employees.map((emp) => (
                   <SelectItem key={emp.id} value={emp.id}>
                     {emp.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {formData.employee_id === 'freelancer' && (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+              <Label htmlFor="freelancer_name">Freelancer Name</Label>
+              <Input
+                id="freelancer_name"
+                required
+                placeholder="Enter freelancer's name"
+                value={formData.freelancer_name}
+                onChange={(e) => setFormData({ ...formData, freelancer_name: e.target.value })}
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Project (Optional)</Label>
+            <Select
+              value={formData.project_id}
+              onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -183,15 +227,6 @@ export function AddSalaryDialog({ open, onOpenChange, onSalaryAdded }: AddSalary
                 required
                 value={formData.salary_month}
                 onChange={(e) => setFormData({ ...formData, salary_month: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="payment_date">Payment Date</Label>
-              <Input
-                id="payment_date"
-                type="date"
-                value={formData.payment_date}
-                onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
               />
             </div>
           </div>

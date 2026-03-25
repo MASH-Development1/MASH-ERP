@@ -13,10 +13,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, TrendingUp, Trash2 } from 'lucide-react';
+import { Plus, TrendingUp, Trash2, Check, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { AddExpenseDialog } from '@/components/dialogs/AddExpenseDialog';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 interface Expense {
   id: string;
@@ -74,6 +80,24 @@ export default function ExpensesPage() {
     if (!confirm('Delete this expense? This cannot be undone.')) return;
     const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (!error) setExpenses((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const handleStatusUpdate = async (id: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      setExpenses((prev) => 
+        prev.map((e) => e.id === id ? { ...e, status: newStatus as any } : e)
+      );
+    } catch (error) {
+      console.error('Error updating expense status:', error);
+      alert('Failed to update status');
+    }
   };
 
   if (loading) {
@@ -136,64 +160,153 @@ export default function ExpensesPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Expense Claims</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {expenses.map((expense) => (
-                  <TableRow key={expense.id}>
-                    <TableCell className="font-medium">
-                      ${parseFloat(expense.amount as any).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          CATEGORY_COLORS[expense.category as keyof typeof CATEGORY_COLORS]
-                        }
-                      >
-                        {expense.category}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{expense.description || '-'}</TableCell>
-                    <TableCell>
-                      {format(new Date(expense.expense_date), 'MMM dd, yyyy')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_COLORS[expense.status]}>
-                        {expense.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(expense.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="all" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="all">Overview</TabsTrigger>
+          <TabsTrigger value="pending">
+            Pending Approvals
+            {expenses.filter(e => e.status === 'pending').length > 0 && (
+              <Badge variant="destructive" className="ml-2 px-1.5 py-0.5 text-[10px]">
+                {expenses.filter(e => e.status === 'pending').length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Expense History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-[100px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.map((expense) => (
+                      <TableRow key={expense.id}>
+                        <TableCell className="font-medium">
+                          ${parseFloat(expense.amount as any).toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              CATEGORY_COLORS[expense.category as keyof typeof CATEGORY_COLORS]
+                            }
+                          >
+                            {expense.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{expense.description || '-'}</TableCell>
+                        <TableCell>
+                          {format(new Date(expense.expense_date), 'MMM dd, yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={STATUS_COLORS[expense.status]}>
+                            {expense.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(expense.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Approvals</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.filter(e => e.status === 'pending').length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          No pending expenses to approve
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      expenses.filter(e => e.status === 'pending').map((expense) => (
+                        <TableRow key={expense.id}>
+                          <TableCell className="font-medium">
+                            ${parseFloat(expense.amount as any).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                CATEGORY_COLORS[expense.category as keyof typeof CATEGORY_COLORS]
+                              }
+                            >
+                              {expense.category}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{expense.description || '-'}</TableCell>
+                          <TableCell>
+                            {format(new Date(expense.expense_date), 'MMM dd, yyyy')}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                onClick={() => handleStatusUpdate(expense.id, 'approved')}
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleStatusUpdate(expense.id, 'rejected')}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {showAddDialog && (
         <AddExpenseDialog

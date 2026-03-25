@@ -32,6 +32,7 @@ const STATUS_COLORS = {
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [payments, setPayments] = useState<{ project_id: string; amount: number; status: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const supabase = createClient();
@@ -42,15 +43,18 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [projectsRes, paymentsRes] = await Promise.all([
+        supabase.from('projects').select('*').order('created_at', { ascending: false }),
+        supabase.from('payments').select('project_id, amount, status').eq('status', 'paid')
+      ]);
 
-      if (error) throw error;
-      setProjects(data || []);
+      if (projectsRes.error) throw projectsRes.error;
+      if (paymentsRes.error) throw paymentsRes.error;
+      
+      setProjects(projectsRes.data || []);
+      setPayments(paymentsRes.data || []);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error fetching projects data:', error);
     } finally {
       setLoading(false);
     }
@@ -148,11 +152,23 @@ export default function ProjectsPage() {
                 </div>
 
                 {project.budget && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Budget</p>
-                    <p className="text-lg font-semibold">
-                      ${project.budget.toLocaleString()}
-                    </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Budget</p>
+                      <p className="text-lg font-semibold">
+                        ${project.budget.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Remaining Budget</p>
+                      <p className={`text-lg font-semibold ${
+                        (project.budget - payments.filter(p => p.project_id === project.id).reduce((sum, p) => sum + parseFloat(p.amount as any), 0)) < 0 
+                          ? 'text-red-600' 
+                          : 'text-green-600'
+                      }`}>
+                        ${(project.budget - payments.filter(p => p.project_id === project.id).reduce((sum, p) => sum + parseFloat(p.amount as any), 0)).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
                 )}
 

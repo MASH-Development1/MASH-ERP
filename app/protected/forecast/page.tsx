@@ -10,7 +10,15 @@ import {
   Receipt,
   Users,
   BarChart3,
+  Filter,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface FinancialSummary {
   totalIncome: number;
@@ -46,6 +54,8 @@ export default function ForecastPage() {
     netProfit: 0,
   });
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
+  const [projects, setProjects] = useState<{id: string; name: string}[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
@@ -57,15 +67,40 @@ export default function ForecastPage() {
 
   const fetchFinancialData = async () => {
     try {
-      const [paymentsRes, expensesRes, salariesRes] = await Promise.all([
-        supabase.from('payments').select('amount, status, payment_date, due_date'),
-        supabase.from('expenses').select('amount, status, expense_date'),
-        supabase.from('salaries').select('net_salary, salary_month'),
+      const [paymentsRes, expensesRes, salariesRes, projectsRes] = await Promise.all([
+        supabase.from('payments').select('amount, status, payment_date, due_date, project_id'),
+        supabase.from('expenses').select('amount, status, expense_date, project_id'),
+        supabase.from('salaries').select('net_salary, salary_month, project_id'),
+        supabase.from('projects').select('id, name'),
       ]);
 
-      const payments = paymentsRes.data || [];
-      const expenses = expensesRes.data || [];
-      const salaries = salariesRes.data || [];
+      if (projectsRes.data) {
+        setProjects(projectsRes.data);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching financial data:', error);
+      setLoading(false);
+    }
+  };
+
+  const calculateForecast = async () => {
+    try {
+      const [paymentsRes, expensesRes, salariesRes] = await Promise.all([
+        supabase.from('payments').select('amount, status, payment_date, due_date, project_id'),
+        supabase.from('expenses').select('amount, status, expense_date, project_id'),
+        supabase.from('salaries').select('net_salary, salary_month, project_id'),
+      ]);
+
+      const rawPayments = paymentsRes.data || [];
+      const rawExpenses = expensesRes.data || [];
+      const rawSalaries = salariesRes.data || [];
+
+      // Filter by project id if selected
+      const payments = rawPayments.filter((p: any) => selectedProject === 'all' || p.project_id === selectedProject);
+      const expenses = rawExpenses.filter((e: any) => selectedProject === 'all' || e.project_id === selectedProject);
+      const salaries = rawSalaries.filter((s: any) => selectedProject === 'all' || s.project_id === selectedProject);
 
       // Income = payments marked as paid
       const totalIncome = payments
@@ -121,14 +156,16 @@ export default function ForecastPage() {
         .map((r) => ({ ...r, net: r.income - r.expenses - r.salaries }))
         .sort((a, b) => b.month.localeCompare(a.month));
 
-      // Update state without flashing loading UI repeatedly
+      // Update state
       setMonthly(rows);
-      setLoading(false);
     } catch (error) {
-      console.error('Error fetching financial data:', error);
-      setLoading(false);
+      console.error('Error calculating forecast:', error);
     }
   };
+
+  useEffect(() => {
+    calculateForecast();
+  }, [selectedProject]);
 
   if (loading) {
     return (
@@ -148,11 +185,28 @@ export default function ForecastPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Financial Forecast</h1>
-        <p className="text-muted-foreground">
-          Full profit & loss overview across income, expenses, and payroll
-        </p>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Financial Forecast</h1>
+          <p className="text-muted-foreground">
+            Full profit & loss overview across income, expenses, and payroll
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="All Projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Global (All Projects)</SelectItem>
+              {projects.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* P&L Banner */}
