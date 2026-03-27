@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   Dialog,
@@ -20,13 +20,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-interface AddLeadDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onLeadAdded: () => void;
+interface Lead {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  status: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost';
+  source: string;
+  notes: string;
 }
 
-export function AddLeadDialog({ open, onOpenChange, onLeadAdded }: AddLeadDialogProps) {
+interface LeadDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onLeadSaved: () => void;
+  lead?: Lead | null;
+}
+
+export function LeadDialog({ open, onOpenChange, onLeadSaved, lead }: LeadDialogProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -40,23 +52,18 @@ export function AddLeadDialog({ open, onOpenChange, onLeadAdded }: AddLeadDialog
 
   const supabase = createClient();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const { error } = await supabase.from('leads').insert([{
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        company: formData.company,
-        status: formData.status,
-        source: formData.source,
-        notes: formData.notes,
-      }]);
-
-      if (error) throw error;
-      
+  useEffect(() => {
+    if (lead) {
+      setFormData({
+        name: lead.name || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        company: lead.company || '',
+        status: lead.status || 'new',
+        source: lead.source || '',
+        notes: lead.notes || '',
+      });
+    } else {
       setFormData({
         name: '',
         email: '',
@@ -66,10 +73,50 @@ export function AddLeadDialog({ open, onOpenChange, onLeadAdded }: AddLeadDialog
         source: '',
         notes: '',
       });
-      onLeadAdded();
+    }
+  }, [lead, open]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (lead?.id) {
+        // Update
+        const { error } = await supabase
+          .from('leads')
+          .update({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            company: formData.company,
+            status: formData.status,
+            source: formData.source,
+            notes: formData.notes,
+          })
+          .eq('id', lead.id);
+
+        if (error) throw error;
+      } else {
+        // Create
+        const { error } = await supabase.from('leads').insert([{
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          company: formData.company,
+          status: formData.status,
+          source: formData.source,
+          notes: formData.notes,
+        }]);
+
+        if (error) throw error;
+      }
+
+      onLeadSaved();
+      onOpenChange(false);
     } catch (error) {
-      console.error('Error adding lead:', error);
-      alert('Failed to add lead');
+      console.error('Error saving lead:', error);
+      alert('Failed to save lead');
     } finally {
       setLoading(false);
     }
@@ -79,7 +126,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadAdded }: AddLeadDialog
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add New Lead</DialogTitle>
+          <DialogTitle>{lead ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -170,7 +217,7 @@ export function AddLeadDialog({ open, onOpenChange, onLeadAdded }: AddLeadDialog
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Adding...' : 'Add Lead'}
+              {loading ? 'Saving...' : lead ? 'Update Lead' : 'Add Lead'}
             </Button>
           </div>
         </form>
