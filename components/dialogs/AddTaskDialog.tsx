@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Slider } from '@/components/ui/slider';
 
 interface Project {
   id: string;
@@ -59,6 +60,8 @@ export function AddTaskDialog({
     projectId: projects[0]?.id || 'none',
     assignedTo: '',
     dueDate: '',
+    progress: 0,
+    recurrence: 'none',
   });
   const supabase = createClient();
 
@@ -89,6 +92,8 @@ export function AddTaskDialog({
 
       if (type === 'goal') {
         insertData.created_by = user?.id;
+        insertData.progress = formData.progress;
+        insertData.recurrence = formData.recurrence;
       }
 
       const { error } = await supabase.from(tableName).insert(insertData);
@@ -103,6 +108,8 @@ export function AddTaskDialog({
         projectId: projects[0]?.id || 'none',
         assignedTo: '',
         dueDate: '',
+        progress: 0,
+        recurrence: 'none',
       });
     } catch (error: any) {
       console.error(`Detailed error adding ${type}:`, JSON.stringify(error, null, 2));
@@ -139,7 +146,7 @@ export function AddTaskDialog({
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              placeholder="Enter task description"
+              placeholder={`Enter ${type} description`}
               value={formData.description}
               onChange={(e) =>
                 setFormData({ ...formData, description: e.target.value })
@@ -147,6 +154,38 @@ export function AddTaskDialog({
               rows={3}
             />
           </div>
+
+          {type === 'goal' && (
+            <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-2">
+                <Label>Initial Progress ({formData.progress}%)</Label>
+                <Slider 
+                    value={[formData.progress]} 
+                    onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
+                    max={100}
+                    step={5}
+                    className="py-4"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Recurrence</Label>
+                <Select
+                  value={formData.recurrence}
+                  onValueChange={(value) => setFormData({ ...formData, recurrence: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No recurrence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -225,7 +264,7 @@ export function AddTaskDialog({
             </Button>
             <Button type="submit" disabled={loading}>
               {loading && <Spinner className="w-4 h-4 mr-2" />}
-              {loading ? 'Creating...' : 'Create Task'}
+              {loading ? 'Creating...' : `Create ${type}`}
             </Button>
           </DialogFooter>
         </form>

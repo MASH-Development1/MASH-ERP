@@ -5,9 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import { AddTaskDialog } from '@/components/dialogs/AddTaskDialog';
 import { TaskCard } from '@/components/TaskCard';
+import { GoalCard } from '@/components/GoalCard';
 import {
   DndContext,
   closestCorners,
@@ -251,58 +252,26 @@ export default function TasksPage() {
         </TabsContent>
 
         <TabsContent value="goals">
-          <DndContext 
-            sensors={sensors}
-            collisionDetection={closestCorners}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {STATUS_COLUMNS.map((column) => {
-                const columnGoals = goals.filter((goal) => goal.status === column.id);
-                return (
-                  <Card key={column.id} className="bg-muted/40 border border-border/50 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm font-bold uppercase tracking-wider text-foreground/80">
-                          {column.title}
-                        </CardTitle>
-                        <Badge variant="secondary" className="text-xs font-semibold bg-primary/10 text-primary border-none">
-                          {columnGoals.length}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <SortableContext 
-                        id={column.id}
-                        items={columnGoals.map(g => g.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <div className="space-y-3 min-h-[500px]">
-                          {columnGoals.map((goal) => (
-                            <TaskCard
-                              key={goal.id}
-                              task={goal}
-                              onStatusChange={async (newStatus) => {
-                                await supabase.from('goals').update({ status: newStatus }).eq('id', goal.id);
-                                fetchData();
-                              }}
-                              onClick={handleTaskClick}
-                              projectName={getProjectName(goal.project_id)}
-                            />
-                          ))}
-                          {columnGoals.length === 0 && (
-                            <div className="flex items-center justify-center h-24 border-2 border-dashed rounded-lg text-muted-foreground text-xs italic">
-                              No goals
-                            </div>
-                          )}
-                        </div>
-                      </SortableContext>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </DndContext>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {goals.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-20 bg-muted/20 border-2 border-dashed rounded-xl">
+                <Target className="w-12 h-12 text-muted-foreground mb-4 opacity-20" />
+                <h3 className="text-lg font-medium text-muted-foreground">No goals defined</h3>
+                <p className="text-sm text-muted-foreground">Goals help you track long-term outcomes and recurring objectives.</p>
+                <Button variant="outline" className="mt-4" onClick={() => setShowAddDialog(true)}>
+                  Create First Goal
+                </Button>
+              </div>
+            ) : (
+              goals.map((goal) => (
+                <GoalCard
+                  key={goal.id}
+                  goal={goal}
+                  onClick={handleTaskClick}
+                />
+              ))
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 

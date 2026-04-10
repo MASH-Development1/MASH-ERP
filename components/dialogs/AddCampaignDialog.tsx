@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/context/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ interface AddCampaignDialogProps {
 
 export function AddCampaignDialog({ open, onOpenChange, onCampaignAdded }: AddCampaignDialogProps) {
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -51,6 +53,7 @@ export function AddCampaignDialog({ open, onOpenChange, onCampaignAdded }: AddCa
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         budget: formData.budget ? parseFloat(formData.budget) : null,
+        created_by: user?.id,
       }]);
 
       if (error) throw error;
@@ -64,9 +67,12 @@ export function AddCampaignDialog({ open, onOpenChange, onCampaignAdded }: AddCa
         budget: '',
       });
       onCampaignAdded();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding campaign:', error);
-      alert('Failed to add campaign');
+      const errorMessage = error.message || 'Unknown error';
+      const errorDetail = error.details || '';
+      const errorHint = error.hint || '';
+      alert(`Failed to add campaign.\n\nError: ${errorMessage}\n${errorDetail}\n${errorHint}`);
     } finally {
       setLoading(false);
     }

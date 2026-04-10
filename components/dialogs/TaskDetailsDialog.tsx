@@ -24,6 +24,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, User, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { Slider } from '@/components/ui/slider';
 
 interface Profile {
   id: string;
@@ -60,6 +61,8 @@ export function TaskDetailsDialog({
     projectId: task?.project_id || 'none',
     assignedTo: task?.assigned_to || '',
     dueDate: task?.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : '',
+    progress: task?.progress || 0,
+    recurrence: task?.recurrence || 'none',
   });
 
   const supabase = createClient();
@@ -74,6 +77,8 @@ export function TaskDetailsDialog({
         projectId: task.project_id || 'none',
         assignedTo: task.assigned_to || '',
         dueDate: task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : '',
+        progress: task.progress || 0,
+        recurrence: task.recurrence || 'none',
       });
     }
     fetchProfiles();
@@ -89,17 +94,24 @@ export function TaskDetailsDialog({
 
     const tableName = type === 'goal' ? 'goals' : 'tasks';
     try {
+      const updateData: any = {
+        title: formData.title,
+        description: formData.description,
+        status: formData.status,
+        priority: formData.priority,
+        project_id: formData.projectId === 'none' ? null : formData.projectId,
+        assigned_to: formData.assignedTo || null,
+        due_date: formData.dueDate || null,
+      };
+
+      if (type === 'goal') {
+        updateData.progress = formData.progress;
+        updateData.recurrence = formData.recurrence;
+      }
+
       const { error } = await supabase
         .from(tableName)
-        .update({
-          title: formData.title,
-          description: formData.description,
-          status: formData.status,
-          priority: formData.priority,
-          project_id: formData.projectId === 'none' ? null : formData.projectId,
-          assigned_to: formData.assignedTo || null,
-          due_date: formData.dueDate || null,
-        })
+        .update(updateData)
         .eq('id', task.id);
 
       if (error) throw error;
@@ -163,6 +175,38 @@ export function TaskDetailsDialog({
               rows={4}
             />
           </div>
+
+          {type === 'goal' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Progress ({formData.progress}%)</Label>
+                <Slider 
+                    value={[formData.progress]} 
+                    onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
+                    max={100}
+                    step={5}
+                    className="py-4"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Recurrence</Label>
+                <Select
+                  value={formData.recurrence}
+                  onValueChange={(value) => setFormData({ ...formData, recurrence: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No recurrence" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
