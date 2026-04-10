@@ -45,10 +45,6 @@ export function GoalCard({ goal, onClick }: { goal: Goal; onClick: (goal: Goal) 
       <div className="absolute -top-6 -right-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
       <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
       
-      <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity z-10">
-        <Target className="w-12 h-12" />
-      </div>
-
       <CardHeader className="pb-2 relative z-20">
         <div className="flex justify-between items-start gap-4">
           <CardTitle className="text-lg font-bold leading-tight group-hover:text-primary transition-colors">

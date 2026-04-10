@@ -63,6 +63,8 @@ export function TaskDetailsDialog({
     dueDate: task?.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : '',
     progress: task?.progress || 0,
     recurrence: task?.recurrence || 'none',
+    term: task?.term || 'short_term',
+    quarter: task?.quarter || 'q1',
   });
 
   const supabase = createClient();
@@ -79,6 +81,8 @@ export function TaskDetailsDialog({
         dueDate: task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : '',
         progress: task.progress || 0,
         recurrence: task.recurrence || 'none',
+        term: task.term || 'short_term',
+        quarter: task.quarter || 'q1',
       });
     }
     fetchProfiles();
@@ -107,6 +111,8 @@ export function TaskDetailsDialog({
       if (type === 'goal') {
         updateData.progress = formData.progress;
         updateData.recurrence = formData.recurrence;
+        updateData.term = formData.term;
+        updateData.quarter = formData.term === 'quarterly' ? formData.quarter : null;
       }
 
       const { error } = await supabase
@@ -177,17 +183,56 @@ export function TaskDetailsDialog({
           </div>
 
           {type === 'goal' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Progress ({formData.progress}%)</Label>
-                <Slider 
-                    value={[formData.progress]} 
-                    onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
-                    max={100}
-                    step={5}
-                    className="py-4"
-                />
+            <div className="space-y-4 pt-2 border-t border-border/50">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Progress ({formData.progress}%)</Label>
+                  <Slider 
+                      value={[formData.progress]} 
+                      onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
+                      max={100}
+                      step={5}
+                      className="py-4"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Goal Term</Label>
+                  <Select
+                    value={formData.term}
+                    onValueChange={(value) => setFormData({ ...formData, term: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select term" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="short_term">Short Term (Weekly/Monthly)</SelectItem>
+                      <SelectItem value="long_term">Long Term (Strategic)</SelectItem>
+                      <SelectItem value="quarterly">Quarterly Goal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
+              {formData.term === 'quarterly' && (
+                <div className="space-y-2">
+                  <Label>Target Quarter</Label>
+                  <Select
+                    value={formData.quarter}
+                    onValueChange={(value) => setFormData({ ...formData, quarter: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select quarter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="q1">Quarter 1 (Q1)</SelectItem>
+                      <SelectItem value="q2">Quarter 2 (Q2)</SelectItem>
+                      <SelectItem value="q3">Quarter 3 (Q3)</SelectItem>
+                      <SelectItem value="q4">Quarter 4 (Q4)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Recurrence</Label>
                 <Select

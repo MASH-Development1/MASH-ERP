@@ -62,6 +62,8 @@ export function AddTaskDialog({
     dueDate: '',
     progress: 0,
     recurrence: 'none',
+    term: 'short_term',
+    quarter: 'q1',
   });
   const supabase = createClient();
 
@@ -94,6 +96,8 @@ export function AddTaskDialog({
         insertData.created_by = user?.id;
         insertData.progress = formData.progress;
         insertData.recurrence = formData.recurrence;
+        insertData.term = formData.term;
+        insertData.quarter = formData.term === 'quarterly' ? formData.quarter : null;
       }
 
       const { error } = await supabase.from(tableName).insert(insertData);
@@ -110,6 +114,8 @@ export function AddTaskDialog({
         dueDate: '',
         progress: 0,
         recurrence: 'none',
+        term: 'short_term',
+        quarter: 'q1',
       });
     } catch (error: any) {
       console.error(`Detailed error adding ${type}:`, JSON.stringify(error, null, 2));
@@ -156,17 +162,56 @@ export function AddTaskDialog({
           </div>
 
           {type === 'goal' && (
-            <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-2">
-                <Label>Initial Progress ({formData.progress}%)</Label>
-                <Slider 
-                    value={[formData.progress]} 
-                    onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
-                    max={100}
-                    step={5}
-                    className="py-4"
-                />
+            <div className="space-y-4 pt-2 border-t border-border/50">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Initial Progress ({formData.progress}%)</Label>
+                  <Slider 
+                      value={[formData.progress]} 
+                      onValueChange={(val) => setFormData({ ...formData, progress: val[0] })}
+                      max={100}
+                      step={5}
+                      className="py-4"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Goal Term</Label>
+                  <Select
+                    value={formData.term}
+                    onValueChange={(value) => setFormData({ ...formData, term: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select term" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="short_term">Short Term (Weekly/Monthly)</SelectItem>
+                      <SelectItem value="long_term">Long Term (Strategic)</SelectItem>
+                      <SelectItem value="quarterly">Quarterly Goal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
+              {formData.term === 'quarterly' && (
+                <div className="space-y-2">
+                  <Label>Target Quarter</Label>
+                  <Select
+                    value={formData.quarter}
+                    onValueChange={(value) => setFormData({ ...formData, quarter: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select quarter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="q1">Quarter 1 (Q1)</SelectItem>
+                      <SelectItem value="q2">Quarter 2 (Q2)</SelectItem>
+                      <SelectItem value="q3">Quarter 3 (Q3)</SelectItem>
+                      <SelectItem value="q4">Quarter 4 (Q4)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Recurrence</Label>
                 <Select

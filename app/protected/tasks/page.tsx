@@ -9,6 +9,7 @@ import { Plus, Target } from 'lucide-react';
 import { AddTaskDialog } from '@/components/dialogs/AddTaskDialog';
 import { TaskCard } from '@/components/TaskCard';
 import { GoalCard } from '@/components/GoalCard';
+import { Progress } from '@/components/ui/progress';
 import {
   DndContext,
   closestCorners,
@@ -57,6 +58,12 @@ const PRIORITY_COLORS = {
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TaskDetailsDialog } from '@/components/dialogs/TaskDetailsDialog';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -251,27 +258,151 @@ export default function TasksPage() {
           </DndContext>
         </TabsContent>
 
-        <TabsContent value="goals">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {goals.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 bg-muted/20 border-2 border-dashed rounded-xl">
-                <Target className="w-12 h-12 text-muted-foreground mb-4 opacity-20" />
-                <h3 className="text-lg font-medium text-muted-foreground">No goals defined</h3>
-                <p className="text-sm text-muted-foreground">Goals help you track long-term outcomes and recurring objectives.</p>
-                <Button variant="outline" className="mt-4" onClick={() => setShowAddDialog(true)}>
-                  Create First Goal
-                </Button>
+        <TabsContent value="goals" className="space-y-16">
+          {goals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-muted/20 border-2 border-dashed rounded-xl">
+              <Target className="w-12 h-12 text-muted-foreground mb-4 opacity-20" />
+              <h3 className="text-lg font-medium text-muted-foreground">No goals defined</h3>
+              <p className="text-sm text-muted-foreground">Goals help you track long-term outcomes and recurring objectives.</p>
+              <Button variant="outline" className="mt-4" onClick={() => setShowAddDialog(true)}>
+                Create First Goal
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Strategic Long-Term Goals */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-border/70 pb-5">
+                  <div>
+                    <h2 className="text-2xl font-extrabold tracking-tight text-foreground">Strategic Long-Term Goals</h2>
+                    <p className="text-sm text-muted-foreground mt-1 font-medium">Core organizational pillars and multi-year trajectory objectives.</p>
+                  </div>
+                  <Badge variant="outline" className="px-4 py-1 text-sm font-black border-2">
+                    {goals.filter(g => g.term === 'long_term').length}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {goals.filter(g => g.term === 'long_term').map((goal) => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      onClick={handleTaskClick}
+                    />
+                  ))}
+                  {goals.filter(g => g.term === 'long_term').length === 0 && (
+                    <div className="col-span-full py-12 text-center border-2 border-dashed rounded-2xl text-muted-foreground/60 text-sm font-medium">
+                      No strategic goals defined.
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              goals.map((goal) => (
-                <GoalCard
-                  key={goal.id}
-                  goal={goal}
-                  onClick={handleTaskClick}
-                />
-              ))
-            )}
-          </div>
+
+              {/* Quarterly Objectives */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-border/70 pb-5">
+                  <div>
+                    <h2 className="text-2xl font-extrabold tracking-tight text-foreground">Quarterly Objectives</h2>
+                    <p className="text-sm text-muted-foreground mt-1 font-medium">Targeted goals for each fiscal quarter.</p>
+                  </div>
+                  <Badge variant="outline" className="px-4 py-1 text-sm font-black border-2">
+                    {goals.filter(g => g.term === 'quarterly').length}
+                  </Badge>
+                </div>
+                
+                <Accordion type="single" collapsible className="w-full space-y-4">
+                  {['q1', 'q2', 'q3', 'q4'].map((q) => {
+                    const quarterGoals = goals.filter(g => g.term === 'quarterly' && g.quarter === q);
+                    
+                    // Calculate time progress for the quarter
+                    const now = new Date();
+                    const year = now.getFullYear();
+                    const quartersDict: Record<string, { start: Date; end: Date }> = {
+                      q1: { start: new Date(year, 0, 1), end: new Date(year, 2, 31, 23, 59, 59) },
+                      q2: { start: new Date(year, 3, 1), end: new Date(year, 5, 30, 23, 59, 59) },
+                      q3: { start: new Date(year, 6, 1), end: new Date(year, 8, 30, 23, 59, 59) },
+                      q4: { start: new Date(year, 9, 1), end: new Date(year, 11, 31, 23, 59, 59) },
+                    };
+                    
+                    const p = quartersDict[q];
+                    let timeProgress = 0;
+                    if (now > p.end) timeProgress = 100;
+                    else if (now >= p.start && now <= p.end) {
+                      const total = p.end.getTime() - p.start.getTime();
+                      const elapsed = now.getTime() - p.start.getTime();
+                      timeProgress = Math.round((elapsed / total) * 100);
+                    }
+
+                    return (
+                      <AccordionItem key={q} value={q} className="border border-border/50 rounded-xl px-6 bg-card/30 overflow-hidden">
+                        <AccordionTrigger className="hover:no-underline py-6">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4 pr-4">
+                            <div className="flex items-center gap-4">
+                              <span className="text-lg font-bold uppercase">{q}</span>
+                              <Badge variant="secondary" className="bg-primary/5 text-primary border-none font-bold">
+                                {quarterGoals.length} Goals
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-3 w-full sm:w-64">
+                              <div className="flex-1 space-y-1">
+                                <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                                  <span>Time Elapsed</span>
+                                  <span>{timeProgress}%</span>
+                                </div>
+                                <Progress value={timeProgress} className="h-1.5 bg-primary/10" />
+                              </div>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+                            {quarterGoals.map((goal) => (
+                              <GoalCard
+                                key={goal.id}
+                                goal={goal}
+                                onClick={handleTaskClick}
+                              />
+                            ))}
+                            {quarterGoals.length === 0 && (
+                              <div className="col-span-full py-8 text-center border-2 border-dashed rounded-xl text-muted-foreground/50 text-xs font-medium italic">
+                                No goals assigned to {q.toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    );
+                  })}
+                </Accordion>
+              </div>
+
+              {/* Tactical Short-Term Goals */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-border/70 pb-5">
+                  <div>
+                    <h2 className="text-2xl font-extrabold tracking-tight text-foreground">Tactical Short-Term Goals</h2>
+                    <p className="text-sm text-muted-foreground mt-1 font-medium">Immediate weekly and monthly goals driving tactical success.</p>
+                  </div>
+                  <Badge variant="outline" className="px-4 py-1 text-sm font-black border-2">
+                    {goals.filter(g => g.term === 'short_term' || !g.term).length}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {goals.filter(g => g.term === 'short_term' || !g.term).map((goal) => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      onClick={handleTaskClick}
+                    />
+                  ))}
+                  {goals.filter(g => g.term === 'short_term' || !g.term).length === 0 && (
+                    <div className="col-span-full py-12 text-center border-2 border-dashed rounded-2xl text-muted-foreground/60 text-sm font-medium">
+                      No tactical goals defined.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </TabsContent>
       </Tabs>
 
