@@ -5,11 +5,23 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Target } from 'lucide-react';
+import { Plus, Target, Filter, Calendar as CalendarIcon } from 'lucide-react';
 import { AddTaskDialog } from '@/components/dialogs/AddTaskDialog';
 import { TaskCard } from '@/components/TaskCard';
 import { GoalCard } from '@/components/GoalCard';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format, startOfWeek, endOfWeek, isWithinInterval, areIntervalsOverlapping } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import {
   DndContext,
   closestCorners,
@@ -36,12 +48,68 @@ interface Task {
   assigned_to: string;
   due_date: string;
   created_at: string;
+  cycle_id?: string | null;
 }
 
 interface Project {
   id: string;
   name: string;
 }
+
+interface TaskCycle {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  type: 'weekly' | 'custom';
+}
+
+type CycleSelection =
+  | { mode: 'all' }
+  | { mode: 'weekly' }
+  | { mode: 'custom'; range?: DateRange }
+  | { mode: 'cycle'; id: string };
+
+interface FiltersState {
+  projectId: string;
+  status: string;
+  assignee: string;
+  includeClosed: boolean;
+}
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'todo', label: 'To Do' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'in_review', label: 'In Review' },
+  { value: 'done', label: 'Done' },
+];
+
+const CYCLE_OPTIONS = [
+  { value: 'all', label: 'All cycles' },
+  { value: 'weekly', label: 'This week' },
+  { value: 'custom', label: 'Custom range' },
+];
+
+const ASSIGNEE_ALL = 'all';
+const PROJECT_ALL = 'all';
+
+const getWeekRange = () => {
+  const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+  return { start, end };
+};
+
+const isDateInRange = (dateValue?: string | null, range?: { start: Date; end: Date }) => {
+  if (!dateValue || !range) return false;
+  const date = new Date(dateValue);
+  return isWithinInterval(date, { start: range.start, end: range.end });
+};
+
+const formatRangeLabel = (range?: DateRange) => {
+  if (!range?.from || !range.to) return 'Custom range';
+  return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d')}`;
+};
 
 const STATUS_COLUMNS = [
   { id: 'todo', title: 'To Do' },
@@ -69,11 +137,20 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [cycles, setCycles] = useState<TaskCycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('tasks');
+  const [cycleSelection, setCycleSelection] = useState<CycleSelection>({ mode: 'all' });
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
+  const [filters, setFilters] = useState<FiltersState>({
+    projectId: PROJECT_ALL,
+    status: 'all',
+    assignee: ASSIGNEE_ALL,
+    includeClosed: true,
+  });
   const supabase = createClient();
 
   const sensors = useSensors(
@@ -94,15 +171,17 @@ export default function TasksPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [tasksRes, projectsRes, goalsRes] = await Promise.all([
+      const [tasksRes, projectsRes, goalsRes, cyclesRes] = await Promise.all([
         supabase.from('tasks').select('*').order('created_at', { ascending: false }),
         supabase.from('projects').select('id, name'),
         supabase.from('goals').select('*').order('created_at', { ascending: false }),
+        supabase.from('task_cycles').select('*').order('start_date', { ascending: false }),
       ]);
 
       if (tasksRes.data) setTasks(tasksRes.data);
       if (projectsRes.data) setProjects(projectsRes.data);
       if (goalsRes.data) setGoals(goalsRes.data);
+      if (cyclesRes.data) setCycles(cyclesRes.data);
     } catch (error: any) {
       console.error('Error fetching data details:', JSON.stringify(error, null, 2));
       console.error('Raw fetch error:', error);
@@ -185,6 +264,126 @@ export default function TasksPage() {
     return projects.find((p) => p.id === projectId)?.name || 'No Project';
   };
 
+  const cycleMap = new Map(cycles.map((cycle) => [cycle.id, cycle]));
+  const weekRange = getWeekRange();
+
+  const effectiveRange =
+    cycleSelection.mode === 'weekly'
+      ? weekRange
+      : cycleSelection.mode === 'custom' && customRange?.from && customRange?.to
+        ? { start: customRange.from, end: customRange.to }
+        : undefined;
+
+  const filteredTasks = tasks.filter((task) => {
+    if (filters.projectId !== PROJECT_ALL && task.project_id !== filters.projectId) {
+      return false;
+    }
+
+    if (filters.status !== 'all' && task.status !== filters.status) {
+      return false;
+    }
+
+    if (filters.assignee !== ASSIGNEE_ALL && task.assigned_to !== filters.assignee) {
+      return false;
+    }
+
+    if (!filters.includeClosed && task.status === 'done') {
+      return false;
+    }
+
+    if (cycleSelection.mode === 'cycle') {
+      return task.cycle_id === cycleSelection.id;
+    }
+
+    if (effectiveRange) {
+      const cycle = task.cycle_id ? cycleMap.get(task.cycle_id) : undefined;
+      const taskCycleRange = cycle
+        ? { start: new Date(cycle.start_date), end: new Date(cycle.end_date) }
+        : undefined;
+      const taskDueDateInRange = isDateInRange(task.due_date, effectiveRange);
+      const taskCycleOverlapsRange = taskCycleRange
+        ? areIntervalsOverlapping(taskCycleRange, effectiveRange, { inclusive: true })
+        : false;
+      return taskDueDateInRange || taskCycleOverlapsRange;
+    }
+
+    return true;
+  });
+
+  const assigneeOptions = Array.from(
+    new Set(tasks.map((task) => task.assigned_to).filter(Boolean))
+  ) as string[];
+
+  const handleCycleModeChange = (value: string) => {
+    if (value === 'all') {
+      setCycleSelection({ mode: 'all' });
+      return;
+    }
+
+    if (value === 'weekly') {
+      setCycleSelection({ mode: 'weekly' });
+      return;
+    }
+
+    if (value === 'custom') {
+      setCycleSelection({ mode: 'custom', range: customRange });
+      return;
+    }
+
+    setCycleSelection({ mode: 'cycle', id: value });
+  };
+
+  const handleCustomRangeChange = (range?: DateRange) => {
+    setCustomRange(range);
+    if (range?.from && range.to) {
+      setCycleSelection({ mode: 'custom', range });
+    }
+  };
+
+  const cycleOptions = cycles.map((cycle) => ({
+    value: cycle.id,
+    label: `${cycle.name} (${format(new Date(cycle.start_date), 'MMM d')} – ${format(new Date(cycle.end_date), 'MMM d')})`,
+  }));
+
+  const customHint =
+    cycleSelection.mode === 'custom'
+      ? customRange?.from && customRange.to
+        ? `Showing tasks from ${format(customRange.from, 'MMM d, yyyy')} to ${format(customRange.to, 'MMM d, yyyy')}`
+        : customRange?.from
+          ? 'Select an end date to complete the custom range.'
+          : 'Select a custom date range to filter tasks.'
+      : null;
+
+  const cycleHint =
+    cycleSelection.mode === 'weekly'
+      ? `Showing tasks for this week (${format(weekRange.start, 'MMM d, yyyy')} – ${format(weekRange.end, 'MMM d, yyyy')})`
+      : cycleSelection.mode === 'cycle'
+        ? cycleMap.get(cycleSelection.id)?.name ?? 'Selected cycle'
+        : cycleSelection.mode === 'all'
+          ? 'Showing tasks across all cycles.'
+          : customHint;
+
+  const hintText = cycleSelection.mode === 'custom' ? customHint : cycleHint;
+
+  const filteredCycleNotes =
+    cycleSelection.mode === 'custom' && customRange?.from && customRange.to
+      ? 'Tasks without a cycle use due date. Tasks with saved cycles are included when their cycle dates overlap the selected range.'
+      : null;
+
+  const selectedCycleValue =
+    cycleSelection.mode === 'cycle'
+      ? cycleSelection.id
+      : cycleSelection.mode === 'weekly'
+        ? 'weekly'
+        : cycleSelection.mode === 'custom'
+          ? 'custom'
+          : 'all';
+
+  const customRangeLabel =
+    cycleSelection.mode === 'custom'
+      ? formatRangeLabel(customRange)
+      : 'Custom range';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -197,6 +396,131 @@ export default function TasksPage() {
           New {activeTab === 'tasks' ? 'Task' : 'Goal'}
         </Button>
       </div>
+
+      {activeTab === 'tasks' && (
+        <div className="flex flex-col gap-4 rounded-lg border border-border/50 bg-card/60 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground/80">
+              <CalendarIcon className="h-4 w-4" />
+              Cycle
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={selectedCycleValue} onValueChange={handleCycleModeChange}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Select cycle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CYCLE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                  {cycleOptions.length > 0 && (
+                    <div className="px-2 py-1 text-[11px] uppercase text-muted-foreground">
+                      Saved cycles
+                    </div>
+                  )}
+                  {cycleOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {cycleSelection.mode === 'custom' && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="justify-start gap-2 text-sm">
+                      <CalendarIcon className="h-4 w-4" />
+                      {customRangeLabel}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={customRange}
+                      onSelect={handleCustomRangeChange}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+              )}
+              {cycleSelection.mode === 'weekly' && (
+                <Badge variant="secondary">
+                  {format(weekRange.start, 'MMM d')} – {format(weekRange.end, 'MMM d')}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground/80">
+              <Filter className="h-4 w-4" />
+              Filters
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={filters.projectId}
+                onValueChange={(value) => setFilters((prev) => ({ ...prev, projectId: value }))}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PROJECT_ALL}>All projects</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.status}
+                onValueChange={(value) => setFilters((prev) => ({ ...prev, status: value }))}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filters.assignee}
+                onValueChange={(value) => setFilters((prev) => ({ ...prev, assignee: value }))}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Assignee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ASSIGNEE_ALL}>All assignees</SelectItem>
+                  {assigneeOptions.map((assignee) => (
+                    <SelectItem key={assignee} value={assignee}>
+                      {assignee}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+                <Checkbox
+                  checked={filters.includeClosed}
+                  onCheckedChange={(value) =>
+                    setFilters((prev) => ({ ...prev, includeClosed: value === true }))
+                  }
+                />
+                <span className="text-muted-foreground">Include closed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="tasks" onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-4">
@@ -212,7 +536,7 @@ export default function TasksPage() {
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {STATUS_COLUMNS.map((column) => {
-                const columnTasks = tasks.filter((task) => task.status === column.id);
+                const columnTasks = filteredTasks.filter((task) => task.status === column.id);
                 return (
                   <Card key={column.id} className="bg-muted/40 border border-border/50 shadow-sm">
                     <CardHeader className="pb-3">
@@ -411,6 +735,7 @@ export default function TasksPage() {
           open={showAddDialog}
           onOpenChange={setShowAddDialog}
           projects={projects}
+          cycles={cycles}
           onTaskAdded={() => {
             setShowAddDialog(false);
             fetchData();
@@ -419,12 +744,21 @@ export default function TasksPage() {
         />
       )}
 
+      {hintText && (
+        <div className="text-xs text-muted-foreground">{hintText}</div>
+      )}
+
+      {filteredCycleNotes && (
+        <div className="text-xs text-muted-foreground">{filteredCycleNotes}</div>
+      )}
+
       {showDetailsDialog && selectedTask && (
         <TaskDetailsDialog
           open={showDetailsDialog}
           onOpenChange={setShowDetailsDialog}
           task={selectedTask}
           projects={projects}
+          cycles={cycles}
           onTaskUpdated={fetchData}
           onTaskDeleted={fetchData}
           type={activeTab === 'tasks' ? 'task' : 'goal'}

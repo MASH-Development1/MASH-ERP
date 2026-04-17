@@ -23,36 +23,46 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { Slider } from '@/components/ui/slider';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { format, startOfWeek, endOfWeek } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 
 interface Project {
   id: string;
   name: string;
 }
 
+interface TaskCycle {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  type: 'weekly' | 'custom';
+}
+
 interface AddTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projects: Project[];
+  cycles: TaskCycle[];
   onTaskAdded: () => void;
   type?: 'task' | 'goal';
-}
-
-interface Profile {
-  id: string;
-  first_name: string;
-  last_name: string;
 }
 
 export function AddTaskDialog({
   open,
   onOpenChange,
   projects,
+  cycles,
   onTaskAdded,
   type = 'task',
 }: AddTaskDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const { user } = useAuth();
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
+  const [cycleSelection, setCycleSelection] = useState<string>('none');
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -67,25 +77,110 @@ export function AddTaskDialog({
   });
   const supabase = createClient();
 
-  useEffect(() => {
-    fetchProfiles();
-  }, []);
-
-  const fetchProfiles = async () => {
-    // No longer needed as we use free-text names
+  const weekRange = {
+    start: startOfWeek(new Date(), { weekStartsOn: 1 }),
+    end: endOfWeek(new Date(), { weekStartsOn: 1 }),
   };
+
+  const cycleOptions = cycles.map((cycle) => ({
+    value: cycle.id,
+    label: `${cycle.name} (${format(new Date(cycle.start_date), 'MMM d')} – ${format(new Date(cycle.end_date), 'MMM d')})`,
+  }));
+
+  const customRangeLabel = customRange?.from && customRange.to
+    ? `${format(customRange.from, 'MMM d')} – ${format(customRange.to, 'MMM d')}`
+    : 'Custom range';
+
+  const createCycleFromRange = async (range: { start: Date; end: Date }, typeValue: 'weekly' | 'custom') => {
+    const startDate = format(range.start, 'yyyy-MM-dd');
+    const endDate = format(range.end, 'yyyy-MM-dd');
+
+    const { data: existingCycle } = await supabase
+      .from('task_cycles')
+      .select('id')
+      .eq('start_date', startDate)
+      .eq('end_date', endDate)
+      .eq('type', typeValue)
+      .maybeSingle();
+
+    if (existingCycle?.id) {
+      return existingCycle.id as string;
+    }
+
+    const name = typeValue === 'weekly'
+      ? `Week of ${format(range.start, 'MMM d')}`
+      : `Cycle ${format(range.start, 'MMM d')} – ${format(range.end, 'MMM d')}`;
+
+    const { data, error } = await supabase
+      .from('task_cycles')
+      .insert({
+        name,
+        start_date: startDate,
+        end_date: endDate,
+        type: typeValue,
+        created_by: user?.id ?? null,
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data?.id as string;
+  };
+
+  const resolveCycleId = async () => {
+    if (type === 'goal') return null;
+
+    if (cycleSelection === 'weekly') {
+      return await createCycleFromRange(weekRange, 'weekly');
+    }
+
+    if (cycleSelection === 'custom' && customRange?.from && customRange.to) {
+      return await createCycleFromRange({ start: customRange.from, end: customRange.to }, 'custom');
+    }
+
+    if (cycleSelection && cycleSelection !== 'none' && cycleSelection !== 'custom') {
+      return cycleSelection;
+    }
+
+    return null;
+  };
+
+  const handleCycleChange = (value: string) => {
+    setCycleSelection(value);
+    if (value !== 'custom') {
+      setCustomRange(undefined);
+    }
+  };
+
+  const handleRangeSelect = (range?: DateRange) => {
+    setCustomRange(range);
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setCustomRange(undefined);
+      setCycleSelection('none');
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (type === 'task' && cycleSelection === 'custom' && (!customRange?.from || !customRange.to)) {
+      alert('Please select both a start date and an end date for the custom cycle.');
+      return;
+    }
+
     setLoading(true);
 
     const tableName = type === 'goal' ? 'goals' : 'tasks';
     try {
+      const cycleId = await resolveCycleId();
       const insertData: any = {
         title: formData.title,
         description: formData.description,
         priority: formData.priority,
         project_id: formData.projectId === 'none' ? null : formData.projectId,
+        cycle_id: cycleId,
         assigned_to: formData.assignedTo || null,
         assigned_by: user?.id,
         due_date: formData.dueDate || null,
@@ -117,6 +212,8 @@ export function AddTaskDialog({
         term: 'short_term',
         quarter: 'q1',
       });
+      setCustomRange(undefined);
+      setCycleSelection('none');
     } catch (error: any) {
       console.error(`Detailed error adding ${type}:`, JSON.stringify(error, null, 2));
       console.error(`Error object for ${type}:`, error);
@@ -298,6 +395,51 @@ export function AddTaskDialog({
               />
             </div>
           </div>
+
+          {type === 'task' && (
+            <div className="space-y-2">
+              <Label>Cycle</Label>
+              <Select value={cycleSelection} onValueChange={handleCycleChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select cycle" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No cycle</SelectItem>
+                  <SelectItem value="weekly">This week</SelectItem>
+                  <SelectItem value="custom">Custom range</SelectItem>
+                  {cycleOptions.length > 0 && (
+                    <div className="px-2 py-1 text-[11px] uppercase text-muted-foreground">
+                      Saved cycles
+                    </div>
+                  )}
+                  {cycleOptions.map((cycle) => (
+                    <SelectItem key={cycle.value} value={cycle.value}>
+                      {cycle.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {cycleSelection === 'custom' && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="mt-2 justify-start gap-2">
+                      <CalendarIcon className="h-4 w-4" />
+                      {customRangeLabel}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={customRange}
+                      onSelect={handleRangeSelect}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button

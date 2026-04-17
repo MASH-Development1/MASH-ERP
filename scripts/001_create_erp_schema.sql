@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS public.projects (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create task cycles
+CREATE TABLE IF NOT EXISTS public.task_cycles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('weekly', 'custom')),
+  created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create tasks table
 CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -46,7 +57,8 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   status task_status DEFAULT 'todo',
   priority TEXT DEFAULT 'medium',
   project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
-  assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  cycle_id UUID REFERENCES public.task_cycles(id) ON DELETE SET NULL,
+  assigned_to TEXT,
   assigned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   due_date DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -150,6 +162,7 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
 -- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.task_cycles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
@@ -176,18 +189,22 @@ CREATE POLICY "Only admins can delete projects" ON public.projects FOR DELETE US
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
+-- RLS Policies for task cycles
+CREATE POLICY "Task cycles are viewable by authenticated users" ON public.task_cycles FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "Users can create task cycles" ON public.task_cycles FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
 -- RLS Policies for tasks
 CREATE POLICY "Tasks are viewable by authenticated users" ON public.tasks FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY "Users can create tasks for their projects" ON public.tasks FOR INSERT WITH CHECK (
-  EXISTS (
+  project_id IS NULL OR EXISTS (
     SELECT 1 FROM public.projects p
     WHERE p.id = project_id AND (p.manager_id = auth.uid() OR EXISTS (
       SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
     ))
   )
 );
-CREATE POLICY "Assigned users and project managers can update tasks" ON public.tasks FOR UPDATE USING (
-  assigned_to = auth.uid() OR assigned_by = auth.uid() OR EXISTS (
+CREATE POLICY "Task updates by creator/assigner/admin" ON public.tasks FOR UPDATE USING (
+  assigned_by = auth.uid() OR EXISTS (
     SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
   )
 );
@@ -251,8 +268,10 @@ CREATE INDEX idx_profiles_role ON public.profiles(role);
 CREATE INDEX idx_projects_manager_id ON public.projects(manager_id);
 CREATE INDEX idx_projects_status ON public.projects(status);
 CREATE INDEX idx_tasks_project_id ON public.tasks(project_id);
+CREATE INDEX idx_tasks_cycle_id ON public.tasks(cycle_id);
 CREATE INDEX idx_tasks_assigned_to ON public.tasks(assigned_to);
 CREATE INDEX idx_tasks_status ON public.tasks(status);
+CREATE INDEX idx_task_cycles_start_date ON public.task_cycles(start_date);
 CREATE INDEX idx_payments_status ON public.payments(status);
 CREATE INDEX idx_expenses_submitted_by ON public.expenses(submitted_by);
 CREATE INDEX idx_salaries_employee_id ON public.salaries(employee_id);
